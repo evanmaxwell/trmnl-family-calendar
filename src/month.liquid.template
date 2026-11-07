@@ -86,6 +86,14 @@
 document.addEventListener("DOMContentLoaded", function() {
   var IGNORED_PHRASES = compileIgnoredPhrases(String.raw`{{ trmnl.plugin_settings.custom_fields_values.ignored_phrases }}`);
   // @generated:helpers
+  var CALENDAR_STYLES = compileCalendarStyles({
+    cal_solid_black: String.raw`{{ trmnl.plugin_settings.custom_fields_values.cal_solid_black }}`,
+    cal_solid_gray: String.raw`{{ trmnl.plugin_settings.custom_fields_values.cal_solid_gray }}`,
+    cal_diag_stripes: String.raw`{{ trmnl.plugin_settings.custom_fields_values.cal_diag_stripes }}`,
+    cal_horiz_stripes: String.raw`{{ trmnl.plugin_settings.custom_fields_values.cal_horiz_stripes }}`,
+    cal_outlined: String.raw`{{ trmnl.plugin_settings.custom_fields_values.cal_outlined }}`,
+    cal_inverted: String.raw`{{ trmnl.plugin_settings.custom_fields_values.cal_inverted }}`
+  });
   var WEEKS = 5, OTHER_BAR = 5, NUM_H = 22, LANE_H = 17;
   var DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
   var DOW = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
@@ -133,14 +141,16 @@ document.addEventListener("DOMContentLoaded", function() {
     return;
   }
   var cd = calRaw.data || calRaw;
+  var calFriendlyNames = cd.calendar_names || {};
+  function resolveName(rawCn, bgColor) { return resolveCalendarName(rawCn, bgColor, calFriendlyNames); }
   var nowIso = cd.today_in_tz || '';
   var todayIso = nowIso.substring(0, 10);
   var events = (cd.events || []).filter(function (ev) { return !isIgnoredEvent(ev); });
   var weeks = monthWeeks(events, weekStart(todayIso, cd.first_day), WEEKS);
   var dow0 = cd.first_day || 0;
 
-  function barFor(color) { var p = personForColor(color); return p ? p.bar : OTHER_BAR; }
-  function isInvert(color) { var p = personForColor(color); return !!(p && p.invert); }
+  function barFor(ev) { var rawCn = (ev && (ev.calname || ev.calendar_name)) || '', bg = (ev && ev.background_color) || ''; var p = styleForCalendar(resolveName(rawCn, bg), rawCn, bg); return p ? p.bar : OTHER_BAR; }
+  function isInvert(ev) { var rawCn = (ev && (ev.calname || ev.calendar_name)) || '', bg = (ev && ev.background_color) || ''; var p = styleForCalendar(resolveName(rawCn, bg), rawCn, bg); return !!(p && p.invert); }
   function parts(iso) { var p = iso.split('-'); return { y: +p[0], m: +p[1], d: +p[2], dow: new Date(Date.UTC(+p[0], +p[1] - 1, +p[2])).getUTCDay() }; }
 
   // Header: today's date, today's holidays (if any), and the weather.
@@ -149,7 +159,7 @@ document.addEventListener("DOMContentLoaded", function() {
   var todayNames = [];
   for (var e0 = 0; e0 < events.length; e0++) {
     var ev0 = events[e0];
-    if (!ev0.all_day || !isInvert(ev0.color)) continue;
+    if (!ev0.all_day || !isInvert(ev0)) continue;
     var s0 = (ev0.start_full || '').substring(0, 10), x0 = (ev0.end_full || '').substring(0, 10) || addDays(s0, 1);
     if (s0 <= todayIso && todayIso < x0) todayNames.push(ev0.summary || '');
   }
@@ -180,21 +190,21 @@ document.addEventListener("DOMContentLoaded", function() {
       for (var it = 0; it < items.length; it++) {
         var item = items[it], ev = item.ev, past = iso < todayIso, name = esc(ev.summary || 'No title');
         if (item.sm < 0) {
-          var inv = isInvert(ev.color);
+          var inv = isInvert(ev);
           h += '<div class="mo-item is-allday' + (inv ? ' is-invert' : '') + (past ? ' is-past' : '') + '">' +
-            (inv ? '' : '<div class="mo-stripe mo-bar-' + barFor(ev.color) + '"></div>') + '<span>' + name + '</span></div>';
+            (inv ? '' : '<div class="mo-stripe mo-bar-' + barFor(ev) + '"></div>') + '<span>' + name + '</span></div>';
         } else {
-          h += '<div class="mo-item' + (past ? ' is-past' : '') + '"><div class="mo-stripe mo-bar-' + barFor(ev.color) + '"></div>' +
+          h += '<div class="mo-item' + (past ? ' is-past' : '') + '"><div class="mo-stripe mo-bar-' + barFor(ev) + '"></div>' +
             '<span><b>' + fmt12(item.sm) + '</b>' + name + '</span></div>';
         }
       }
       h += '</div></div>';
     }
     for (var b = 0; b < wk.bars.length; b++) {
-      var bar = wk.bars[b], binv = isInvert(bar.ev.color), bpast = wk.days[bar.col + bar.span - 1] < todayIso;
+      var bar = wk.bars[b], binv = isInvert(bar.ev), bpast = wk.days[bar.col + bar.span - 1] < todayIso;
       h += '<div class="mo-bar' + (binv ? ' is-invert' : '') + (bpast ? ' is-past' : '') + (bar.contL ? ' contL' : '') + (bar.contR ? ' contR' : '') + '" style="' +
         'top:' + (NUM_H - 1 + bar.lane * LANE_H) + 'px;left:calc(' + (bar.col * 100 / 7) + '% + 2px);width:calc(' + (bar.span * 100 / 7) + '% - 4px)">' +
-        (binv ? '' : '<div class="mo-stripe mo-bar-' + barFor(bar.ev.color) + '"></div>') + '<span>' + esc(bar.ev.summary || 'No title') + '</span></div>';
+        (binv ? '' : '<div class="mo-stripe mo-bar-' + barFor(bar.ev) + '"></div>') + '<span>' + esc(bar.ev.summary || 'No title') + '</span></div>';
     }
     h += '</div>';
   }

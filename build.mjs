@@ -63,7 +63,12 @@ function fullLiquidHelpers() {
   const weatherIcon = readModule('src/lib/weatherIcon.js');
   const aqiShade = readModule('src/lib/aqiShade.js');
   const timeFormat = readModule('src/lib/timeFormat.js');
-  const eventColors = readModule('src/lib/eventColors.js');
+  const eventColors = readModule('src/lib/eventColors.js')
+    .replace('function styleForCalendar(', 'function styleForCalendarPure(') +
+    '\n\n' +
+    '// Wrapper preserving the inline signature styleForCalendar(calName, rawCalName, bgColor): it\n' +
+    '// binds the pure lookup to the CALENDAR_STYLES compiled in this scope.\n' +
+    'function styleForCalendar(calName, rawCalName, bgColor) { return styleForCalendarPure(calName, rawCalName, CALENDAR_STYLES, bgColor); }';
   return [eventLayout, dateLabels, ignored, jsonRecovery, diagnosticSeverity, weatherIcon, aqiShade, timeFormat, eventColors].join('\n\n');
 }
 
@@ -76,7 +81,10 @@ function agendaHelpers() {
     'function isIgnoredEvent(ev) { return isIgnoredEventPure(ev, IGNORED_PHRASES); }';
   const jsonRecovery = readModule('src/lib/jsonRecovery.js');
   const weatherIcon = readModule('src/lib/weatherIcon.js');
-  const eventColors = readModule('src/lib/eventColors.js');
+  const eventColors = readModule('src/lib/eventColors.js')
+    .replace('function styleForCalendar(', 'function styleForCalendarPure(') +
+    '\n\n' +
+    'function styleForCalendar(calName, rawCalName, bgColor) { return styleForCalendarPure(calName, rawCalName, CALENDAR_STYLES, bgColor); }';
   const aqiShade = readModule('src/lib/aqiShade.js');
   const agenda = readModule('src/lib/agenda.js');
   return [eventLayout, ignored, jsonRecovery, weatherIcon, aqiShade, eventColors, agenda].join('\n\n');
@@ -91,7 +99,10 @@ function monthHelpers() {
     'function isIgnoredEvent(ev) { return isIgnoredEventPure(ev, IGNORED_PHRASES); }';
   const jsonRecovery = readModule('src/lib/jsonRecovery.js');
   const weatherIcon = readModule('src/lib/weatherIcon.js');
-  const eventColors = readModule('src/lib/eventColors.js');
+  const eventColors = readModule('src/lib/eventColors.js')
+    .replace('function styleForCalendar(', 'function styleForCalendarPure(') +
+    '\n\n' +
+    'function styleForCalendar(calName, rawCalName, bgColor) { return styleForCalendarPure(calName, rawCalName, CALENDAR_STYLES, bgColor); }';
   const timeFormat = readModule('src/lib/timeFormat.js');
   const agenda = readModule('src/lib/agenda.js');
   const monthGrid = readModule('src/lib/monthGrid.js');

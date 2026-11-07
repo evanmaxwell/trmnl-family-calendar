@@ -27,7 +27,8 @@ export function compileIgnoredPhrases(raw) {
 
 /**
  * Return true when the event's title or description matches any ignored phrase.
- * @param {{summary?:string, description?:string}} ev - the calendar event
+ * Double braces are avoided in JSDoc because this file is inlined into Liquid.
+ * @param {Object} ev - the calendar event
  * @param {RegExp[]} ignoredPhrases - compiled by compileIgnoredPhrases
  * @returns {boolean}
  */

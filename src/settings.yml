@@ -1,8 +1,10 @@
 ---
 name: "Calendar + Weather"
-description: "Weekly calendar with weather forecast, air quality, and sunrise/sunset. Combines Google Calendar events with Open-Meteo data on a time-grid layout optimized for 2-bit e-ink."
+description: "Weekly calendar with weather forecast, air quality, and sunrise/sunset. Combines TRMNL Companion app calendar events with Open-Meteo data on a time-grid layout optimized for 2-bit e-ink."
 polling_url: |
-  {{ middleware_url }}?token={{ middleware_token }}&src=cal&tz={{ timezone }}
-  {{ middleware_url }}?token={{ middleware_token }}&src=weather&lat={{ latitude }}&lon={{ longitude }}&tz={{ timezone }}
-  {{ middleware_url }}?token={{ middleware_token }}&src=aqi&lat={{ latitude }}&lon={{ longitude }}&tz={{ timezone }}
+  https://usetrmnl.com/api/plugin_settings/{{ calendar_plugin_id }}/data
+  https://api.open-meteo.com/v1/forecast?latitude={{ latitude }}&longitude={{ longitude }}&daily=temperature_2m_max,temperature_2m_min,weather_code,precipitation_probability_max,sunrise,sunset,uv_index_max,wind_speed_10m_max,wind_gusts_10m_max&hourly=temperature_2m,precipitation_probability&%63urrent=temperature_2m&temperature_unit=fahrenheit&wind_speed_unit=mph&timezone={{ timezone }}&forecast_days=7
+  https://air-quality-api.open-meteo.com/v1/air-quality?latitude={{ latitude }}&longitude={{ longitude }}&%63urrent=us_aqi&timezone={{ timezone }}
 polling_verb: GET
+polling_headers: |
+  authorization=bearer {{ trmnl_api_key }}

@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import { addDays, agendaDays, fmtClock, weekStart } from './agenda.js';
+import { addDays, agendaDays, compileDayNotes, fmtClock, weekStart } from './agenda.js';
 
 const timed = (summary, d, s, e, color = '') => ({
   summary, color, all_day: false,
@@ -91,5 +91,28 @@ describe('agendaDays', () => {
     ev.end_full = '2026-10-29T01:00:00.000-04:00';
     const days = agendaDays([ev], '2026-10-28', 1);
     expect(days[0].timed[0].em).toBe(1440);
+  });
+});
+
+describe('compileDayNotes', () => {
+  test('returns an empty object when blank or missing', () => {
+    expect(compileDayNotes('')).toEqual({});
+    expect(compileDayNotes(null)).toEqual({});
+    expect(compileDayNotes(undefined)).toEqual({});
+  });
+
+  test('parses Day=Note and Day: Note entries with full or short weekday names', () => {
+    expect(compileDayNotes('Monday=Trash and recycling go out, Wed=Compost goes out, Thursday: Trash goes out')).toEqual({
+      1: 'Trash and recycling go out',
+      3: 'Compost goes out',
+      4: 'Trash goes out',
+    });
+  });
+
+  test('preserves commas inside a note when followed by non-day text', () => {
+    expect(compileDayNotes('Mon=Trash, recycling, Thu=Yard waste')).toEqual({
+      1: 'Trash, recycling',
+      4: 'Yard waste',
+    });
   });
 });

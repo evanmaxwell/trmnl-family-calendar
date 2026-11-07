@@ -8,8 +8,9 @@ var MN2=["January","February","March","April","May","June","July","August","Sept
 
 /**
  * Map an ISO date (YYYY-MM-DD) to its weekday abbreviation and day-of-month.
+ * Double braces are avoided in JSDoc because this file is inlined into Liquid.
  * @param {string} iso - e.g. "2026-04-09"
- * @returns {{dn:string, dd:number}} weekday abbreviation and day-of-month
+ * @returns {Object} weekday abbreviation (dn) and day-of-month (dd)
  */
 export function dayInfo(iso){var p=iso.split("-");var d=new Date(+p[0],+p[1]-1,+p[2]);return{dn:DA[d.getDay()],dd:+p[2]};}
 

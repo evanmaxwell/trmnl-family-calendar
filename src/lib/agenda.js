@@ -79,3 +79,36 @@ export function agendaDays(events, today, count) {
   for (var k = 0; k < days.length; k++) days[k].timed.sort(function (a, b) { return a.sm - b.sm || a.em - b.em; });
   return days;
 }
+
+/**
+ * Compile a `day_notes` form field string into a weekday-to-note map (`0` =
+ * Sunday through `6` = Saturday). Accepts comma-, semicolon-, or newline-
+ * separated `Day=Note` or `Day: Note` entries with full or short weekday names.
+ * Double braces are avoided in JSDoc because this file is inlined into Liquid.
+ * @param {string|null|undefined} raw
+ * @returns {Object} map of weekday number (0..6) to note string
+ */
+export function compileDayNotes(raw) {
+  var out = {};
+  if (!raw) return out;
+  var dayMap = {
+    sun: 0, sunday: 0, '0': 0,
+    mon: 1, monday: 1, '1': 1,
+    tue: 2, tues: 2, tuesday: 2, '2': 2,
+    wed: 3, weds: 3, wednesday: 3, '3': 3,
+    thu: 4, thur: 4, thurs: 4, thursday: 4, '4': 4,
+    fri: 5, friday: 5, '5': 5,
+    sat: 6, saturday: 6, '6': 6
+  };
+  var parts = String(raw).split(/(?:[\r\n;]+|\s*,\s*(?=(?:sun|mon|tue|wed|thu|fri|sat|[0-6])[a-z]*\s*[:=]))/i);
+  for (var i = 0; i < parts.length; i++) {
+    var m = /^([a-z0-9]+)\s*[:=]\s*(.+)$/i.exec(parts[i].trim());
+    if (!m) continue;
+    var dow = dayMap[m[1].toLowerCase()];
+    var note = m[2].trim();
+    if (dow !== undefined && note) {
+      out[dow] = out[dow] ? out[dow] + ' · ' + note : note;
+    }
+  }
+  return out;
+}

@@ -161,7 +161,8 @@ document.addEventListener("DOMContentLoaded", function() {
 
   /**
    * Return true when the event's title or description matches any ignored phrase.
-   * @param {{summary?:string, description?:string}} ev - the calendar event
+   * Double braces are avoided in JSDoc because this file is inlined into Liquid.
+   * @param {Object} ev - the calendar event
    * @param {RegExp[]} ignoredPhrases - compiled by compileIgnoredPhrases
    * @returns {boolean}
    */
@@ -276,36 +277,166 @@ document.addEventListener("DOMContentLoaded", function() {
   }
 
   /**
-   * Google Calendar event colorId to person. Each person gets one of the
-   * existing grayscale bar patterns (cw-bar-N) so no new color dithers (ADR 0004).
-   * colorName is the Google Calendar color name, shown in the legend so the
-   * family remembers which color to pick. `invert` draws the event as white
-   * text on black (holidays) instead of a patterned bar.
+   * Form-field pattern slots in legend order. Each slot maps one plugin form
+   * field key to a 2-bit grayscale bar pattern (ADR 0004). `invert` draws the
+   * event as white text on black (holidays) instead of a patterned bar.
    */
-  var PERSON_COLORS = {
-    '11': { name: 'Family', bar: 1, colorName: 'Tomato' },
-    '5': { name: 'Lindy', bar: 0, colorName: 'Banana' },
-    '3': { name: 'Adam', bar: 4, colorName: 'Grape' },
-    '10': { name: 'Julian', bar: 7, colorName: 'Basil' },
-    '9': { name: 'Birthdays', bar: 2, colorName: 'Blueberry' },
-    '8': { name: 'Holidays', bar: 10, colorName: 'Graphite', invert: true }
-  };
+  var STYLE_SLOTS = [
+    { key: 'cal_solid_black', bar: 1, invert: false },
+    { key: 'cal_solid_gray', bar: 0, invert: false },
+    { key: 'cal_diag_stripes', bar: 4, invert: false },
+    { key: 'cal_horiz_stripes', bar: 7, invert: false },
+    { key: 'cal_outlined', bar: 2, invert: false },
+    { key: 'cal_inverted', bar: 10, invert: true }
+  ];
 
   /**
-   * Legend order. Kept as an array because a JavaScript object iterates its
-   * integer-like keys (the colorIds) in numeric order, not insertion order.
+   * True when `str` is an event UID rather than a human calendar name. The TRMNL
+   * Companion for iOS app populates `calname` with the event's iCalendar UID
+   * (a UUID or long hex digest) and sends the calendar's color in
+   * `background_color`.
+   * @param {string|undefined|null} str
+   * @returns {boolean}
    */
-  var PERSON_ORDER = ['Family', 'Lindy', 'Adam', 'Julian', 'Birthdays', 'Holidays'];
-
-  /**
-   * Person for an event color, or null when the event has no mapped color.
-   * @param {string|number|undefined} colorId - Google Calendar event colorId
-   * @returns {Object|null} name and bar index, or null
-   */
-  function personForColor(colorId) {
-    if (colorId === undefined || colorId === null || colorId === '') return null;
-    return PERSON_COLORS[String(colorId)] || null;
+  function isEventUid(str) {
+    if (!str) return false;
+    var s = String(str).trim();
+    return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(s) ||
+           /^[0-9a-f]{24,}(_[0-9]+)?$/i.test(s);
   }
+
+  /**
+   * Map a 6-digit hex color (from `background_color` in the TRMNL Companion for
+   * iOS app payload) to a friendly color name: Pink, Orange, Brown, Yellow,
+   * Green, Blue, Purple, Red, or Gray. Returns '' when `hex` is not a valid
+   * 6-digit hex color.
+   * @param {string|undefined|null} hex - e.g. "#FF12D9"
+   * @returns {string}
+   */
+  function colorNameForHex(hex) {
+    if (!hex) return '';
+    var m = /^#?([0-9a-f]{6})$/i.exec(String(hex).trim());
+    if (!m) return '';
+    var n = parseInt(m[1], 16);
+    var r = (n >> 16) & 255, g = (n >> 8) & 255, b = n & 255;
+    var max = Math.max(r, g, b), min = Math.min(r, g, b), d = max - min;
+    if (d < 25) return 'Gray';
+    var h;
+    if (max === r) h = ((g - b) / d) * 60 + (g < b ? 360 : 0);
+    else if (max === g) h = ((b - r) / d + 2) * 60;
+    else h = ((r - g) / d + 4) * 60;
+    var s = max === 0 ? 0 : d / max;
+    if (h >= 15 && h < 45) return (s < 0.55 || max < 200) ? 'Brown' : 'Orange';
+    if (h >= 45 && h < 70) return 'Yellow';
+    if (h >= 70 && h < 165) return 'Green';
+    if (h >= 165 && h < 255) return 'Blue';
+    if (h >= 255 && h < 290) return 'Purple';
+    if (h >= 290 && h < 345) return 'Pink';
+    return 'Red';
+  }
+
+  /**
+   * Resolve an event's calendar display name. Uses `calFriendlyNames` when mapped
+   * (middleware email -> name), keeps `rawCalName` when it is a real calendar
+   * name, and falls back to the friendly color name of `bgColor` when `rawCalName`
+   * is a per-event UID from the TRMNL Companion for iOS app.
+   * @param {string|undefined} rawCalName - `ev.calname` or `ev.calendar_name`
+   * @param {string|undefined} bgColor - `ev.background_color`
+   * @param {Object|null|undefined} calFriendlyNames - email-to-name map
+   * @returns {string}
+   */
+  function resolveCalendarName(rawCalName, bgColor, calFriendlyNames) {
+    var raw = rawCalName ? String(rawCalName).trim() : '';
+    if (raw && calFriendlyNames && calFriendlyNames[raw]) return calFriendlyNames[raw];
+    if (raw && !isEventUid(raw)) return raw;
+    if (bgColor) return colorNameForHex(bgColor) || String(bgColor).trim();
+    return '';
+  }
+
+  /**
+   * Compile the six calendar-style form fields into a legend list and a
+   * case-insensitive calendar-name/color lookup map. Each field accepts one or
+   * more comma-separated calendar names, iOS calendar color names (Pink, Orange,
+   * Green, Red, Brown, Blue, Purple, Yellow), or hex codes, with optional
+   * `Calendar=Short Label` syntax to show a custom name in the legend.
+   * Double braces are avoided in JSDoc because this file is inlined into Liquid.
+   * @param {Object|null|undefined} fields - map of form field keynames to raw strings
+   * @returns {Object} object holding ordered list and byCalName map
+   */
+  function compileCalendarStyles(fields) {
+    var ordered = [], byCalName = {};
+    if (!fields || typeof fields !== 'object') return { ordered: ordered, byCalName: byCalName };
+    for (var i = 0; i < STYLE_SLOTS.length; i++) {
+      var slot = STYLE_SLOTS[i];
+      var raw = fields[slot.key];
+      if (!raw) continue;
+      var parts = String(raw).split(',');
+      for (var j = 0; j < parts.length; j++) {
+        var token = parts[j].trim();
+        if (!token) continue;
+        var eq = token.indexOf('=');
+        var calName = eq >= 0 ? token.substring(0, eq).trim() : token;
+        var label = eq >= 0 ? (token.substring(eq + 1).trim() || calName) : calName;
+        if (!calName) continue;
+        var entry = { name: label, bar: slot.bar, invert: !!slot.invert };
+        var key = calName.toLowerCase();
+        byCalName[key] = entry;
+        byCalName[label.toLowerCase()] = entry;
+        if (key === 'magenta') byCalName['pink'] = entry;
+        if (key === 'pink') byCalName['magenta'] = entry;
+        if (key === 'grey') byCalName['gray'] = entry;
+        if (key === 'gray') byCalName['grey'] = entry;
+        if (/^#[0-9a-f]{6}$/.test(key)) byCalName[key.substring(1)] = entry;
+        if (/^[0-9a-f]{6}$/.test(key)) byCalName['#' + key] = entry;
+        var exists = false;
+        for (var k = 0; k < ordered.length; k++) {
+          if (ordered[k].name === entry.name && ordered[k].bar === entry.bar && ordered[k].invert === entry.invert) {
+            exists = true;
+            break;
+          }
+        }
+        if (!exists) ordered.push(entry);
+      }
+    }
+    return { ordered: ordered, byCalName: byCalName };
+  }
+
+  /**
+   * Style entry for a calendar name or iOS `background_color`, or null when the
+   * calendar is not mapped in the form fields. Checks the resolved display name
+   * first, then `rawCalName`, then `bgColor` (both hex and friendly color name).
+   * Double braces are avoided in JSDoc because this file is inlined into Liquid.
+   * @param {string|undefined} calName - resolved display name of the calendar
+   * @param {string|undefined} rawCalName - raw `calname` from the event payload
+   * @param {Object|null|undefined} calendarStyles - compiled by compileCalendarStyles
+   * @param {string|undefined} [bgColor] - `background_color` hex from the iOS app
+   * @returns {Object|null} name, bar, invert, or null
+   */
+  function styleForCalendarPure(calName, rawCalName, calendarStyles, bgColor) {
+    if (!calendarStyles || !calendarStyles.byCalName) return null;
+    var map = calendarStyles.byCalName;
+    if (calName) {
+      var hit = map[String(calName).trim().toLowerCase()];
+      if (hit) return hit;
+    }
+    if (rawCalName && !isEventUid(rawCalName)) {
+      var rawHit = map[String(rawCalName).trim().toLowerCase()];
+      if (rawHit) return rawHit;
+    }
+    if (bgColor) {
+      var bgKey = String(bgColor).trim().toLowerCase();
+      if (map[bgKey]) return map[bgKey];
+      var cName = colorNameForHex(bgColor);
+      if (cName && map[cName.toLowerCase()]) return map[cName.toLowerCase()];
+    }
+    if (rawCalName) {
+      var uidHit = map[String(rawCalName).trim().toLowerCase()];
+      if (uidHit) return uidHit;
+    }
+    return null;
+  }
+
+  function styleForCalendar(calName, rawCalName, bgColor) { return styleForCalendarPure(calName, rawCalName, CALENDAR_STYLES, bgColor); }
 
   /**
    * Split minutes-since-midnight into a 12-hour clock reading.
@@ -448,6 +579,39 @@ document.addEventListener("DOMContentLoaded", function() {
   }
 
   /**
+   * Compile a `day_notes` form field string into a weekday-to-note map (`0` =
+   * Sunday through `6` = Saturday). Accepts comma-, semicolon-, or newline-
+   * separated `Day=Note` or `Day: Note` entries with full or short weekday names.
+   * Double braces are avoided in JSDoc because this file is inlined into Liquid.
+   * @param {string|null|undefined} raw
+   * @returns {Object} map of weekday number (0..6) to note string
+   */
+  function compileDayNotes(raw) {
+    var out = {};
+    if (!raw) return out;
+    var dayMap = {
+      sun: 0, sunday: 0, '0': 0,
+      mon: 1, monday: 1, '1': 1,
+      tue: 2, tues: 2, tuesday: 2, '2': 2,
+      wed: 3, weds: 3, wednesday: 3, '3': 3,
+      thu: 4, thur: 4, thurs: 4, thursday: 4, '4': 4,
+      fri: 5, friday: 5, '5': 5,
+      sat: 6, saturday: 6, '6': 6
+    };
+    var parts = String(raw).split(/(?:[\r\n;]+|\s*,\s*(?=(?:sun|mon|tue|wed|thu|fri|sat|[0-6])[a-z]*\s*[:=]))/i);
+    for (var i = 0; i < parts.length; i++) {
+      var m = /^([a-z0-9]+)\s*[:=]\s*(.+)$/i.exec(parts[i].trim());
+      if (!m) continue;
+      var dow = dayMap[m[1].toLowerCase()];
+      var note = m[2].trim();
+      if (dow !== undefined && note) {
+        out[dow] = out[dow] ? out[dow] + ' · ' + note : note;
+      }
+    }
+    return out;
+  }
+
+  /**
    * Lay out events on a grid of whole weeks. Each multi-day all-day event
    * becomes one bar per week row (`col`, `span`, a `lane` so that overlapping
    * bars stack, and `contL`/`contR` when it continues from or into another
@@ -530,6 +694,14 @@ document.addEventListener("DOMContentLoaded", function() {
     if (c >= 95) return 'Thunderstorm';
     return '';
   }
+  var CALENDAR_STYLES = compileCalendarStyles({
+    cal_solid_black: String.raw`{{ trmnl.plugin_settings.custom_fields_values.cal_solid_black }}`,
+    cal_solid_gray: String.raw`{{ trmnl.plugin_settings.custom_fields_values.cal_solid_gray }}`,
+    cal_diag_stripes: String.raw`{{ trmnl.plugin_settings.custom_fields_values.cal_diag_stripes }}`,
+    cal_horiz_stripes: String.raw`{{ trmnl.plugin_settings.custom_fields_values.cal_horiz_stripes }}`,
+    cal_outlined: String.raw`{{ trmnl.plugin_settings.custom_fields_values.cal_outlined }}`,
+    cal_inverted: String.raw`{{ trmnl.plugin_settings.custom_fields_values.cal_inverted }}`
+  });
   var WEEKS = 5, OTHER_BAR = 5, NUM_H = 22, LANE_H = 17;
   var DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
   var DOW = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
@@ -577,14 +749,16 @@ document.addEventListener("DOMContentLoaded", function() {
     return;
   }
   var cd = calRaw.data || calRaw;
+  var calFriendlyNames = cd.calendar_names || {};
+  function resolveName(rawCn, bgColor) { return resolveCalendarName(rawCn, bgColor, calFriendlyNames); }
   var nowIso = cd.today_in_tz || '';
   var todayIso = nowIso.substring(0, 10);
   var events = (cd.events || []).filter(function (ev) { return !isIgnoredEvent(ev); });
   var weeks = monthWeeks(events, weekStart(todayIso, cd.first_day), WEEKS);
   var dow0 = cd.first_day || 0;
 
-  function barFor(color) { var p = personForColor(color); return p ? p.bar : OTHER_BAR; }
-  function isInvert(color) { var p = personForColor(color); return !!(p && p.invert); }
+  function barFor(ev) { var rawCn = (ev && (ev.calname || ev.calendar_name)) || '', bg = (ev && ev.background_color) || ''; var p = styleForCalendar(resolveName(rawCn, bg), rawCn, bg); return p ? p.bar : OTHER_BAR; }
+  function isInvert(ev) { var rawCn = (ev && (ev.calname || ev.calendar_name)) || '', bg = (ev && ev.background_color) || ''; var p = styleForCalendar(resolveName(rawCn, bg), rawCn, bg); return !!(p && p.invert); }
   function parts(iso) { var p = iso.split('-'); return { y: +p[0], m: +p[1], d: +p[2], dow: new Date(Date.UTC(+p[0], +p[1] - 1, +p[2])).getUTCDay() }; }
 
   // Header: today's date, today's holidays (if any), and the weather.
@@ -593,7 +767,7 @@ document.addEventListener("DOMContentLoaded", function() {
   var todayNames = [];
   for (var e0 = 0; e0 < events.length; e0++) {
     var ev0 = events[e0];
-    if (!ev0.all_day || !isInvert(ev0.color)) continue;
+    if (!ev0.all_day || !isInvert(ev0)) continue;
     var s0 = (ev0.start_full || '').substring(0, 10), x0 = (ev0.end_full || '').substring(0, 10) || addDays(s0, 1);
     if (s0 <= todayIso && todayIso < x0) todayNames.push(ev0.summary || '');
   }
@@ -624,21 +798,21 @@ document.addEventListener("DOMContentLoaded", function() {
       for (var it = 0; it < items.length; it++) {
         var item = items[it], ev = item.ev, past = iso < todayIso, name = esc(ev.summary || 'No title');
         if (item.sm < 0) {
-          var inv = isInvert(ev.color);
+          var inv = isInvert(ev);
           h += '<div class="mo-item is-allday' + (inv ? ' is-invert' : '') + (past ? ' is-past' : '') + '">' +
-            (inv ? '' : '<div class="mo-stripe mo-bar-' + barFor(ev.color) + '"></div>') + '<span>' + name + '</span></div>';
+            (inv ? '' : '<div class="mo-stripe mo-bar-' + barFor(ev) + '"></div>') + '<span>' + name + '</span></div>';
         } else {
-          h += '<div class="mo-item' + (past ? ' is-past' : '') + '"><div class="mo-stripe mo-bar-' + barFor(ev.color) + '"></div>' +
+          h += '<div class="mo-item' + (past ? ' is-past' : '') + '"><div class="mo-stripe mo-bar-' + barFor(ev) + '"></div>' +
             '<span><b>' + fmt12(item.sm) + '</b>' + name + '</span></div>';
         }
       }
       h += '</div></div>';
     }
     for (var b = 0; b < wk.bars.length; b++) {
-      var bar = wk.bars[b], binv = isInvert(bar.ev.color), bpast = wk.days[bar.col + bar.span - 1] < todayIso;
+      var bar = wk.bars[b], binv = isInvert(bar.ev), bpast = wk.days[bar.col + bar.span - 1] < todayIso;
       h += '<div class="mo-bar' + (binv ? ' is-invert' : '') + (bpast ? ' is-past' : '') + (bar.contL ? ' contL' : '') + (bar.contR ? ' contR' : '') + '" style="' +
         'top:' + (NUM_H - 1 + bar.lane * LANE_H) + 'px;left:calc(' + (bar.col * 100 / 7) + '% + 2px);width:calc(' + (bar.span * 100 / 7) + '% - 4px)">' +
-        (binv ? '' : '<div class="mo-stripe mo-bar-' + barFor(bar.ev.color) + '"></div>') + '<span>' + esc(bar.ev.summary || 'No title') + '</span></div>';
+        (binv ? '' : '<div class="mo-stripe mo-bar-' + barFor(bar.ev) + '"></div>') + '<span>' + esc(bar.ev.summary || 'No title') + '</span></div>';
     }
     h += '</div>';
   }
