@@ -9,13 +9,14 @@ The plugin's pure logic runs inline in two places a test runner cannot import: t
 `src/lib/*.js` holds the **only** hand-edited copy of the pure helpers, each with a `bun test` suite. A build step inlines them into the shipped files, so there is no second copy to keep in sync.
 
 - **Single source:** `src/lib/` modules stay pure, typed (JSDoc), and tested.
-  - From the template: `toMin`, `layoutOverlaps` (`eventLayout.js`); `dayInfo`, `calKey` (`dateLabels.js`); `compileIgnoredPhrases`, `isIgnoredEvent` (`ignoredEvents.js`); `sanitizeJson`, `parseLiquid`, `hasCalData`, `isFailedPollingSlot`, `isEmptyPollingSlot`, `deepParse` (`jsonRecovery.js`); `allDiagnosticsAreTransient` (`diagnosticSeverity.js`); `wIcon` (`weatherIcon.js`).
+  - From the template: `toMin`, `layoutOverlaps` (`eventLayout.js`); `dayInfo`, `calKey` (`dateLabels.js`); `compileIgnoredPhrases`, `isIgnoredEvent` (`ignoredEvents.js`); `sanitizeJson`, `parseLiquid`, `hasCalData`, `isFailedPollingSlot`, `isEmptyPollingSlot`, `deepParse` (`jsonRecovery.js`); `allDiagnosticsAreTransient` (`diagnosticSeverity.js`); `wIcon` (`weatherIcon.js`); `STYLE_SLOTS`, `isEventUid`, `colorNameForHex`, `resolveCalendarName`, `compileCalendarStyles`, `styleForCalendar` (`eventColors.js`); `addDays`, `weekStart`, `fmtClock`, `agendaDays`, `compileDayNotes` (`agenda.js`); `monthWeeks`, `weatherText` (`monthGrid.js`).
   - From the middleware: `cleanText`, `cacheKey`, `forecastUrl` (`middleware.js`).
 - **Templates with a marker:** `src/full.liquid.template` and `src/middleware/calendar_weather_proxy.gs.template` are the hand-edited shells. Each has one `@generated:helpers` marker where the helpers are inlined; everything else is authored there.
 - **Build step:** `build.mjs` (run with `bun run build`) reads each template, replaces the marker with the concatenated `src/lib` source (stripped of `export`/`import` so it is plain in-scope JS/GS), and writes the committed, ready-to-paste `src/full.liquid` and `.gs`. Each generated file carries a "GENERATED - do not edit" banner.
-- **Signature-preserving wrappers:** two helpers closed over an outer value in the original inline code. The build emits the pure function under a `*Pure` name plus a thin wrapper that restores the original call site, so no call site in the template or `.gs` changes:
-  - `isIgnoredEvent(ev)` -> `isIgnoredEventPure(ev, ignoredPhrases)` + `function isIgnoredEvent(ev){ return isIgnoredEventPure(ev, IGNORED_PHRASES); }`
-  - `cleanText(text)` -> `cleanTextPure(text, maxTextLength)` + `function cleanText(text){ return cleanTextPure(text, CONFIG.maxTextLength); }`
+- **Signature-preserving wrappers:** three helpers close over an outer value in the inline template or `.gs` code. The build emits each pure function under a `*Pure` name plus a thin wrapper that restores the original call site, so no call site in the template or `.gs` changes:
+  - `isIgnoredEvent(ev)` -> `isIgnoredEventPure(ev, ignoredPhrases)` + `function isIgnoredEvent(ev) { return isIgnoredEventPure(ev, IGNORED_PHRASES); }`
+  - `styleForCalendar(calName, rawCalName, bgColor)` -> `styleForCalendarPure(calName, rawCalName, calendarStyles, bgColor)` + `function styleForCalendar(calName, rawCalName, bgColor) { return styleForCalendarPure(calName, rawCalName, CALENDAR_STYLES, bgColor); }`
+  - `cleanText(text)` -> `cleanTextPure(text, maxTextLength)` + `function cleanText(text) { return cleanTextPure(text, CONFIG.maxTextLength); }`
 - **Drift gate:** `src/lib/generated.test.js` regenerates both files in memory and fails if a committed file differs (EOL-normalized). `bun test .` runs it, so CI blocks any PR where a generated file was hand-edited or the author forgot to run `bun run build`.
 
 The exempt layers keep their non-unit safety net: the Liquid render and DOM-building glue in `full.liquid`, and the Google-service calls in the `.gs` (`CalendarApp`, `CacheService`, `UrlFetchApp`), are verified by the local `trmnlp serve` visual run and the on-screen diagnostic overlay. One rule in the Liquid render is the exception: the script-breakout escape chain on every `{{ IDX_n }}` injection (`src/full.liquid.template`) cannot move into `src/lib`, because the HTML parser acts before any JavaScript runs, so no JS helper can repair a script element that already closed. `src/lib/scriptInjectionGuard.test.js` reads the template file as text and asserts the chain is present at every injection point instead, so this one rule gets a `bun test` unit test despite living in the exempt layer.
@@ -27,10 +28,10 @@ The exempt layers keep their non-unit safety net: the Liquid render and DOM-buil
 **Positive:**
 
 - One tested source of truth. The generated files cannot drift from `src/lib`: the drift test fails if they do.
-- Call sites are untouched, so the shipped runtime behavior is identical to the hand-written original (wrappers restore the two changed signatures).
+- Call sites are untouched, so the shipped runtime behavior is identical to the hand-written original (wrappers restore the three changed signatures).
 - The exempt UI/service layers are still honestly marked and covered by visual/diagnostic checks, not fake unit tests.
 
 **Trade-offs and follow-up:**
 
 - Deploying now has one extra step: run `bun run build`, then paste the generated `src/full.liquid` / `.gs` (never edit those directly). The pre-commit hook regenerates and stages them; the drift test is the backstop.
-- A helper that is genuinely not pure (closes over template/`.gs` state) needs a wrapper in `build.mjs`, as `isIgnoredEvent` and `cleanText` do.
+- A helper that is genuinely not pure (closes over template/`.gs` state) needs a wrapper in `build.mjs`, as `isIgnoredEvent`, `styleForCalendar`, and `cleanText` do.

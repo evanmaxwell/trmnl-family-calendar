@@ -18,12 +18,12 @@ Repo-wide conventions, the ADR index, and the Git workflow live in the root `AGE
 | `weatherIcon.js` | `wIcon` | `full.liquid`, `agenda.liquid`, `month.liquid` |
 | `aqiShade.js` | `aqiShade` | `full.liquid`, `agenda.liquid` |
 | `timeFormat.js` | `fmt12`, `fmtRange12`, `hourLabel12`, `gridRange` | `full.liquid`, `month.liquid` |
-| `eventColors.js` | `PERSON_COLORS`, `PERSON_ORDER`, `personForColor` | `full.liquid`, `agenda.liquid`, `month.liquid` |
-| `agenda.js` | `addDays`, `weekStart`, `fmtClock`, `agendaDays` | `agenda.liquid`, `month.liquid` |
+| `eventColors.js` | `STYLE_SLOTS`, `isEventUid`, `colorNameForHex`, `resolveCalendarName`, `compileCalendarStyles`, `styleForCalendar` | `full.liquid`, `agenda.liquid`, `month.liquid` |
+| `agenda.js` | `addDays`, `weekStart`, `fmtClock`, `agendaDays`, `compileDayNotes` | `agenda.liquid`, `month.liquid` |
 | `monthGrid.js` | `monthWeeks`, `weatherText` | `month.liquid` |
 | `middleware.js` | `cleanText`, `cacheKey`, `forecastUrl` | `src/middleware/calendar_weather_proxy.gs` |
 
-`isIgnoredEvent` takes its compiled-phrases array as a parameter so the module is pure. The build emits it as `isIgnoredEventPure` plus a wrapper `isIgnoredEvent(ev)` that binds `IGNORED_PHRASES`, so the template's call sites are unchanged. (`cleanText` gets the same treatment in the `.gs`; see `src/middleware/AGENTS.md`.)
+`isIgnoredEvent` and `styleForCalendar` take their compiled inputs as parameters so the modules stay pure. The build emits `isIgnoredEventPure` plus a wrapper `isIgnoredEvent(ev)` that binds `IGNORED_PHRASES`. It also emits `styleForCalendarPure` plus a wrapper `styleForCalendar(calName, rawCalName, bgColor)` that binds `CALENDAR_STYLES`, so the template's call sites are unchanged. (`cleanText` gets the same treatment in the `.gs`; see `src/middleware/AGENTS.md`.)
 
 ## Gotchas
 
@@ -31,12 +31,13 @@ Repo-wide conventions, the ADR index, and the Git workflow live in the root `AGE
 - **Every `{{ IDX_n }}` injection needs the script-breakout guard (critical).** The polled values go inside backticks inside the one `<script>` block, and Liquid's `json` filter does not escape `<`. Each injection point therefore carries `| replace: '<', '\u003c' | replace: '`', '\u0060' | replace: '${', '\u0024{'`. Without it an HTML error page containing `</script>` ends the script element and the whole screen renders as garbled text. The escaping must stay in Liquid: the HTML parser acts before any JavaScript runs, so no `src/lib` helper can repair it. `src/lib/scriptInjectionGuard.test.js` fails CI if an injection point loses the chain, reverses or reorders it, or a seventh point appears without it. It reads every replacement out of the template, so it cannot pass while the real chain is wrong.
 - **Never write a script end tag anywhere inside the `<script>` block (critical).** Not in a comment, not in a string. The HTML parser ends the script element at the first `<` `/script` sequence and ignores the JavaScript context, so the rest of the file renders as page text. This shipped once, in the comment that explains the escape chain, and it broke every screen. Write "a script end tag" in prose instead. `src/lib/scriptInjectionGuard.test.js` counts the sequence in `full.liquid.template` and in the generated `full.liquid`, so an inlined `src/lib` comment cannot smuggle one in either.
 - **The guard covers the polled `IDX_n` values only.** The settings-derived injections are a known gap, above all `ignored_phrases`, which a user could break with a backtick or `</script>` in their own plugin settings. The same chain does not work there: it sits inside `String.raw`, which stops JavaScript from decoding `<` back into `<`.
-- **The helper block lives at the `@generated:helpers` marker in `full.liquid.template`.** Everything outside the marker (config, parse flow, DOM building, the `IGNORED_PHRASES` compile call, non-pure helpers like `esc`/`deepParseWeather`) is authored in the template.
+- **The helper block lives at the `@generated:helpers` marker in `full.liquid.template`.** Everything outside the marker (config, parse flow, DOM building, the `IGNORED_PHRASES` and `CALENDAR_STYLES` compile calls, non-pure helpers like `esc`/`deepParseWeather`) is authored in the template.
 - TRMNL framework wraps content in `.screen > .view > .layout` divs that add padding. Override with `padding: 0 !important`.
 - `.layout--row` needs explicit `height: 480px !important` or the flex layout collapses.
 - `width: 100%` works for width but `height: 100%` does not propagate. Use `height: 480px` explicitly.
 - trmnlp's Liquid `json` filter outputs Ruby hash syntax (`=>` instead of `:`). Use `str.replace(/ => /g, ': ')` before JSON.parse (this is what `parseLiquid` does).
 - Only use hex colors #000, #555, #AAA, #fff. Everything else gets Floyd-Steinberg dithered on 2-bit displays (see ADR 0004).
-- The `calname` field contains email addresses, not display names. Use `calendar_names` map from the API response.
+- **Never write double curly braces in `src/lib/` comments or JSDoc (critical).** `build.mjs` inlines `src/lib/*.js` directly into the `.liquid` templates. Liquid parses any `{{` as a Liquid variable tag, even inside JavaScript comments, and fails with a syntax error if it is not closed before `<` or a newline. Write `{Object}` instead of `{{key: type}}` in JSDoc.
+- The `calname` field contains email addresses (Google Calendar / middleware) or per-event UUIDs (TRMNL Companion for iOS app). For iOS Companion events, the calendar identity is in `background_color` (hex color code). `resolveCalendarName` and `styleForCalendar` resolve display names and bar patterns from `calendar_names`, `cal_*` `Key=Label` mappings, or the iOS color name.
 - In `form_fields.yml` the default key is `default`, not `default_value`. TRMNL silently ignores unknown keys, so a wrong key means no default is applied.
 - Editing `full.liquid` only reaches the device after you paste it into the TRMNL markup editor and Force Refresh; the repo file is not deployed automatically.

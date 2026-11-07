@@ -54,11 +54,11 @@ There is no formatter or linter (deliberate; see ADR 0005). Whenever you need to
 
 ## Architecture
 
-- **Data strategy:** Private Plugin with Polling (3 URLs), all pointing to one Google Apps Script middleware (`?src=cal|weather|aqi`)
-  - `IDX_0` = `src=cal` - Google Calendar events read directly by the script, served from a trigger-warmed cache (building live is ~15s and can exceed TRMNL's 30s timeout); mimics the TRMNL calendar `/data` shape (flat array with `date_time`, `start_full`, `end_full`, `calname`)
-  - `IDX_1` = `src=weather` - Open-Meteo forecast passthrough (daily + hourly + current), served from a trigger-warmed cache
-  - `IDX_2` = `src=aqi` - Open-Meteo air quality passthrough (optional, European AQI)
-- **Legacy direct mode:** the TRMNL calendar `/data` URL + direct Open-Meteo URLs still parse identically; the middleware replaced them for reliability (see Gotchas).
+- **Data strategy:** Private Plugin with Polling (3 URLs). By default, `src/settings.yml` and `src/form_fields.yml` poll TRMNL's Calendar plugin `/data` endpoint (fed by the TRMNL Companion for iOS app) plus direct Open-Meteo URLs:
+  - `IDX_0` = `https://usetrmnl.com/api/plugin_settings/{{ calendar_plugin_id }}/data` (authenticated via `authorization=bearer {{ trmnl_api_key }}` header; flat array with `date_time`, `start_full`, `end_full`, `calname`)
+  - `IDX_1` = Open-Meteo forecast (daily + hourly + current, Fahrenheit, mph)
+  - `IDX_2` = Open-Meteo air quality (optional, US AQI)
+- **Optional middleware mode:** `src/middleware/calendar_weather_proxy.gs` (`?src=cal|weather|aqi`) serves the same JSON shape from a trigger-warmed cache for setups that read Google Calendar directly (see ADR 0002).
 - **Rendering:** JS builds the DOM from Liquid-injected JSON. No external dependencies.
 - **Screen:** 800x480px, 2-bit grayscale (4 native shades: #000, #555, #AAA, #fff)
 
@@ -142,7 +142,7 @@ ADRs live in `adr/`. Each records one architectural decision or cross-cutting st
 | ADR | Topic |
 |-----|-------|
 | [0001](adr/0001-agent-docs-structure.md) | `AGENTS.md` map + Claude-Code-only skills/subagents/settings |
-| [0002](adr/0002-apps-script-middleware-data-layer.md) | Cache-warmed Google Apps Script middleware as the single data layer, to beat the playlist pause and the 30s poll timeout |
+| [0002](adr/0002-apps-script-middleware-data-layer.md) | Default direct poll of TRMNL Calendar `/data` (Companion iOS app) + Open-Meteo, with optional cache-warmed Apps Script middleware |
 | [0003](adr/0003-full-view-only-layout.md) | Full-view-only layout; the other view templates are stubs |
 | [0004](adr/0004-two-bit-grayscale-palette.md) | Design to the 4-shade 2-bit grayscale palette; no dithered colors |
 | [0005](adr/0005-no-code-formatter.md) | No code formatter or linter; conventions and tests instead |

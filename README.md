@@ -30,17 +30,17 @@ This project is a fork of [guplem/trmnl-cal-weather](https://github.com/guplem/t
 
 **In all three views**
 
-- **Person color code.** Each Google Calendar event color stands for a person. The screen draws each person with a different grayscale bar pattern, and the legend names the color to use.
+- **Calendar bar patterns.** Six plugin form fields in [`src/form_fields.yml`](src/form_fields.yml) assign a grayscale bar pattern to each calendar name or iOS calendar color (`Pink`, `Red`, `Orange`, `Brown`, `Green`, `Blue`, `Purple`, `Yellow`, or hex code). Each field accepts comma-separated entries, or `Key=Label` to set the legend label.
 
-  | Google color | Who |
-  |---|---|
-  | Tomato | Family |
-  | Banana | Lindy |
-  | Grape | Adam |
-  | Basil | Julian |
-  | Blueberry | Birthdays |
-  | Graphite | Holidays (white text on black) |
-  | Any other color | Other |
+  | Form field (`src/form_fields.yml`) | Pattern | Example |
+  |---|---|---|
+  | `cal_solid_black` | Solid black bar (`bar 1`) | `Pink=Primary` |
+  | `cal_solid_gray` | Solid gray bar (`bar 0`) | `Red=Birthdays` |
+  | `cal_diag_stripes` | Black diagonal stripes (`bar 4`) | `Orange=D&D` |
+  | `cal_horiz_stripes` | Black horizontal stripes (`bar 7`) | `Blue=Work` |
+  | `cal_outlined` | White outlined bar (`bar 2`) | `Brown=Meals` |
+  | `cal_inverted` | White text on solid black (`bar 10`, also listed under today's date in Month view) | `Green=Holidays` |
+  | Unmapped calendar | Gray horizontal stripes (`Other`, `bar 5`), or auto-assigned when all six fields are blank | |
 
 - **12-hour times**, Fahrenheit, mph, and the US air quality index (AQI)
 - **Earlier days and finished events in dark gray**, so they stay readable on e-ink
@@ -55,10 +55,10 @@ This project is a fork of [guplem/trmnl-cal-weather](https://github.com/guplem/t
 
 **Week Agenda (X)**
 
-- Sunday to Saturday, with today outlined in black
-- Each event shows its start time, end time, title, and location
+- Sunday to Saturday (or Monday to Sunday), with today outlined in black
+- Each event shows its start time, end time, title, and location; all-day titles wrap up to 2 lines and timed titles wrap up to 3 lines
 - A busy day ends with "+ N more" instead of a cut-off row
-- Weekly chore notes at the bottom of set days (trash, recycling, compost). Edit `DAY_NOTES` in `src/agenda.liquid.template` to change them.
+- Optional weekly day notes at the bottom of set days (`day_notes` form field, e.g. `Monday=Trash & recycling, Wednesday=Compost`)
 
 **Month at a Glance (X)**
 
@@ -70,15 +70,14 @@ This project is a fork of [guplem/trmnl-cal-weather](https://github.com/guplem/t
 ## How it works
 
 ```
-TRMNL polls three URLs (about every 15 min)
-    |
-    +--> ?src=cal      events from the start of this week, 35 days ahead
-    +--> ?src=weather  Open-Meteo forecast (Fahrenheit, mph)
-    +--> ?src=aqi      Open-Meteo air quality (US AQI)
+TRMNL Companion for iOS app
+    pushes iPhone calendars to your native TRMNL Calendar plugin (Data Provider: iPhone App)
               |
-    Google Apps Script middleware (free, on your own Google account)
-        reads Google Calendar directly
-        serves everything from a cache that a 15-minute trigger keeps warm
+TRMNL polls three URLs directly (about every 15 min)
+    |
+    +--> usetrmnl.com/api/plugin_settings/{{ calendar_plugin_id }}/data   calendar events
+    +--> api.open-meteo.com/v1/forecast                                   weather (Fahrenheit, mph)
+    +--> air-quality-api.open-meteo.com/v1/air-quality                    air quality (US AQI)
               |
     Three Liquid templates (one per plugin), all reading the same data:
         src/full.liquid     Calendar + Weather
@@ -86,53 +85,52 @@ TRMNL polls three URLs (about every 15 min)
         src/month.liquid    Month at a Glance
 ```
 
-All three plugins use the same middleware and the same three polling URLs.
+All three plugins use the same form fields ([`src/form_fields.yml`](src/form_fields.yml)) and the same three polling URLs ([`src/settings.yml`](src/settings.yml)).
+
+If you do not use the iOS app, you can deploy the optional Google Apps Script middleware in **[MIDDLEWARE_SETUP.md](MIDDLEWARE_SETUP.md)** instead.
 
 ## Setup
 
-Plan on about 30 minutes. You do not need a server or any coding.
+Plan on about 20 minutes. You do not need a server or any coding.
 
-> **Using Claude Code?** Open this repo and ask Claude to "set up the family calendar". The `setup-family-calendar` skill asks about your household (people, colors, location, chores), customizes the code, and walks you through every step below.
+> **Do you use Claude Code?** Open this repo and ask Claude to "set up the family calendar". The `setup-family-calendar` skill asks about your household (calendars, patterns, location, chores), customizes the code, and walks you through every step below.
 
 ### What you need
 
 - **A TRMNL device and account.** Private plugins need the TRMNL Developer add-on or a BYOD (bring your own device) license. If you do not have either, turn on **Developer perks** in your TRMNL account settings.
-- **A Google account that can see the calendar.** A shared family calendar works. The free Google Apps Script service runs the middleware on this account.
-- **Your latitude, longitude, and time zone**, for the weather. Find your coordinates at [open-meteo.com](https://open-meteo.com/en/docs).
+- **Your personal TRMNL API key.** Copy it from [trmnl.com/account](https://trmnl.com/account) (starts with `user_...`). The private plugin uses this key to read your native TRMNL Calendar plugin data.
+- **The TRMNL Companion for iOS app** on an iPhone or iPad that holds your calendars. (To read Google Calendar without the iOS app, see **[MIDDLEWARE_SETUP.md](MIDDLEWARE_SETUP.md)** for the optional Google Apps Script alternative.)
+- **Your latitude, longitude, and time zone**, for the weather. Find your coordinates at [open-meteo.com](https://open-meteo.com/en/docs). Open-Meteo is free and needs no account.
 
-You do **not** need any API keys. Google Calendar access comes from the Google account that runs the script, and Open-Meteo is free with no account.
+### Step 1: Set up the native TRMNL Calendar plugin
 
-The only secret is a **token** that you make up yourself: a long random string, for example from a password manager. It goes in two places, the script's `CONFIG.token` and the TRMNL plugin settings. It stops other people from reading your calendar through the script URL. Never share the token or commit it to a repo.
-
-### Step 1: Deploy the middleware
-
-Follow **[MIDDLEWARE_SETUP.md](MIDDLEWARE_SETUP.md)** to deploy `src/middleware/calendar_weather_proxy.gs` as a Google Apps Script web app. It takes about 10 minutes and needs no server.
-
-In the script's `CONFIG`:
-
-- Set `token` to a long random secret. Never commit it; the repo copy keeps the `YOUR_SECRET_TOKEN` placeholder.
-- Optionally list your calendar IDs in `calendarIds`. Left empty, the script reads every calendar that is checked in Google Calendar.
-- `firstDayOfWeek` is `0` (Sunday). Use `1` for Monday.
-
-You end up with a web app URL (ends in `/exec`) and your token.
+1. In TRMNL, open your native **Calendar** plugin (or add one under **Plugins > Calendar**).
+2. Set **Data Provider** to **iPhone App** and save.
+3. Open the **TRMNL Companion for iOS** app, sign in, and select the calendars that you want on the display.
+4. Copy the numeric `plugin_setting_id` from the browser URL when you edit the Calendar plugin: `usetrmnl.com/plugin_settings/12345/edit`.
 
 ### Step 2: Create the three private plugins
 
-For each plugin: go to **Plugins > Private Plugin > Add new**, then:
+For each plugin, go to **Plugins > Private Plugin > Add new**, then:
 
-1. Give it a name, for example `Week Agenda (X)`.
+1. Give the plugin a name, for example `Calendar + Weather (X)`.
 2. Set **Strategy** to `Polling` and **Polling Verb** to `GET`.
-3. Add the three polling URLs, one per line. Replace the capitalized parts:
+3. Paste the form fields from [`src/form_fields.yml`](src/form_fields.yml) into the plugin's custom fields.
+4. Add the three polling URLs from [`src/settings.yml`](src/settings.yml), one per line:
 
    ```
-   YOUR_SCRIPT_URL?token=YOUR_SECRET_TOKEN&src=cal&tz=YOUR_TIMEZONE
-   YOUR_SCRIPT_URL?token=YOUR_SECRET_TOKEN&src=weather&lat=YOUR_LAT&lon=YOUR_LON&tz=YOUR_TIMEZONE
-   YOUR_SCRIPT_URL?token=YOUR_SECRET_TOKEN&src=aqi&lat=YOUR_LAT&lon=YOUR_LON&tz=YOUR_TIMEZONE
+   https://usetrmnl.com/api/plugin_settings/{{ calendar_plugin_id }}/data
+   https://api.open-meteo.com/v1/forecast?latitude={{ latitude }}&longitude={{ longitude }}&daily=temperature_2m_max,temperature_2m_min,weather_code,precipitation_probability_max,sunrise,sunset,uv_index_max,wind_speed_10m_max,wind_gusts_10m_max&hourly=temperature_2m,precipitation_probability&%63urrent=temperature_2m&temperature_unit=fahrenheit&wind_speed_unit=mph&timezone={{ timezone }}&forecast_days=7
+   https://air-quality-api.open-meteo.com/v1/air-quality?latitude={{ latitude }}&longitude={{ longitude }}&%63urrent=us_aqi&timezone={{ timezone }}
    ```
 
-   To keep the token out of the URL field, paste the form fields from [`src/form_fields.yml`](src/form_fields.yml) into the plugin's custom fields and use `{{ middleware_url }}` and `{{ middleware_token }}` in the URLs. The token then lives in a password field.
+5. Add the polling header from [`src/settings.yml`](src/settings.yml):
 
-4. Save, then open **Edit Markup** (Full view) and paste the whole matching file:
+   ```
+   authorization=bearer {{ trmnl_api_key }}
+   ```
+
+6. Save, open **Edit Markup** (Full view), and paste the whole matching file:
 
    | Plugin | Paste this file |
    |---|---|
@@ -140,19 +138,25 @@ For each plugin: go to **Plugins > Private Plugin > Add new**, then:
    | Week Agenda (X) | [`src/agenda.liquid`](src/agenda.liquid) |
    | Month at a Glance (X) | [`src/month.liquid`](src/month.liquid) |
 
-5. Save, click **Force Refresh**, and add the plugin to your playlist. TRMNL sometimes adds a new plugin to the playlist by itself; remove any duplicate.
+### Step 3: Fill in the plugin form fields
 
-### Step 3: Color-code your events
+In the plugin settings page, fill in the custom form fields:
 
-In Google Calendar, give each event the color of the person it belongs to (see the table above). Events with no color show as "Other". Put holidays in Graphite to get white-on-black labels.
+1. Enter your **TRMNL API Key** (`trmnl_api_key`) and **Calendar Plugin ID** (`calendar_plugin_id`).
+2. Enter your **Latitude**, **Longitude**, and **Timezone**.
+3. Assign your calendar names to the six bar-pattern fields (`cal_solid_black`, `cal_solid_gray`, `cal_diag_stripes`, `cal_horiz_stripes`, `cal_outlined`, `cal_inverted`). Separate multiple calendars in one field with commas. Write `Calendar Name=Label` (for example `US Holidays=Holidays`) to show a shorter name in the legend.
+4. Save, click **Force Refresh**, and add the plugin to your playlist. TRMNL sometimes adds a new plugin to the playlist by itself; remove any duplicate.
 
-To change the people or colors, edit `PERSON_COLORS` and `PERSON_ORDER` in [`src/lib/eventColors.js`](src/lib/eventColors.js), then rebuild (see below).
+### Optional: Google Apps Script middleware
+
+If you do not use the iOS app, or if you want the middleware's trigger-warmed cache and 35-day Google Calendar window, follow **[MIDDLEWARE_SETUP.md](MIDDLEWARE_SETUP.md)** to deploy `src/middleware/calendar_weather_proxy.gs` on your Google account.
 
 ## Customization
 
-- **Location:** change `lat`, `lon`, and `tz` in the polling URLs. Find coordinates at [open-meteo.com](https://open-meteo.com/en/docs).
+- **Location:** change **Latitude**, **Longitude**, and **Timezone** in the plugin form fields (or `lat`, `lon`, and `tz` in the middleware URLs). Find coordinates at [open-meteo.com](https://open-meteo.com/en/docs).
+- **Calendar patterns:** edit the six calendar pattern fields (`cal_solid_black` through `cal_inverted`) in the plugin settings, or edit `STYLE_SLOTS` in [`src/lib/eventColors.js`](src/lib/eventColors.js) and rebuild.
 - **Ignore events:** fill the **Ignored phrases** plugin setting with comma-separated, case-insensitive patterns, for example `^Work$`.
-- **Declined events** are hidden by the middleware. Set `CONFIG.hideDeclinedEvents` to `false` to show them.
+- **Declined events:** the optional middleware hides declined events by default. Set `CONFIG.hideDeclinedEvents` to `false` to show them.
 - **Hours on the time grid:** change the `7*60, 22*60` range passed to `gridRange` in `src/full.liquid.template`.
 
 ## Development
