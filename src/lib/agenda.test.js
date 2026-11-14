@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import { addDays, agendaDays, compileDayNotes, fmtClock, weekStart } from './agenda.js';
+import { addDays, agendaDays, compileDayNotes, fmtClock, resolveNow, weekStart } from './agenda.js';
 
 const timed = (summary, d, s, e, color = '') => ({
   summary, color, all_day: false,
@@ -114,5 +114,43 @@ describe('compileDayNotes', () => {
       1: 'Trash, recycling',
       4: 'Yard waste',
     });
+  });
+});
+
+describe('resolveNow', () => {
+  test('uses render-time now shifted by wx.utc_offset_seconds even when todayInTz is stale', () => {
+    const res = resolveNow(
+      new Date('2026-11-14T20:50:00.000Z'),
+      { utc_offset_seconds: -18000 },
+      '2026-11-06T00:00:00.000-05:00'
+    );
+    expect(res).toEqual({ todayIso: '2026-11-14', nowMin: 15 * 60 + 50 });
+  });
+
+  test('handles date boundary across UTC midnight using wx.utc_offset_seconds', () => {
+    const res = resolveNow(
+      new Date('2026-11-15T02:15:00.000Z'),
+      { utc_offset_seconds: -18000 },
+      '2026-11-06T00:00:00.000-05:00'
+    );
+    expect(res).toEqual({ todayIso: '2026-11-14', nowMin: 21 * 60 + 15 });
+  });
+
+  test('falls back to the ISO UTC offset in todayInTz when wx is null or lacks utc_offset_seconds', () => {
+    const res = resolveNow(
+      new Date('2026-11-14T20:50:00.000Z'),
+      null,
+      '2026-11-06T00:00:00.000-05:00'
+    );
+    expect(res).toEqual({ todayIso: '2026-11-14', nowMin: 15 * 60 + 50 });
+  });
+
+  test('handles positive UTC offsets in todayInTz', () => {
+    const res = resolveNow(
+      new Date('2026-04-09T22:30:00.000Z'),
+      null,
+      '2026-04-03T00:00:00.000+02:00'
+    );
+    expect(res).toEqual({ todayIso: '2026-04-10', nowMin: 30 });
   });
 });

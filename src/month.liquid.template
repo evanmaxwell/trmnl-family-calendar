@@ -143,8 +143,7 @@ document.addEventListener("DOMContentLoaded", function() {
   var cd = calRaw.data || calRaw;
   var calFriendlyNames = cd.calendar_names || {};
   function resolveName(rawCn, bgColor) { return resolveCalendarName(rawCn, bgColor, calFriendlyNames); }
-  var nowIso = cd.today_in_tz || '';
-  var todayIso = nowIso.substring(0, 10);
+  var todayIso = resolveNow(new Date(), wx, cd.today_in_tz).todayIso;
   var events = (cd.events || []).filter(function (ev) { return !isIgnoredEvent(ev); });
   var weeks = monthWeeks(events, weekStart(todayIso, cd.first_day), WEEKS);
   var dow0 = cd.first_day || 0;

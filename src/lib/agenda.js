@@ -112,3 +112,44 @@ export function compileDayNotes(raw) {
   }
   return out;
 }
+
+/**
+ * Resolve today's ISO date and current minutes-since-midnight in the user's
+ * timezone from the render-time clock (`now`). Uses `wx.utc_offset_seconds`
+ * from Open-Meteo first, then falls back to the ISO offset in `todayInTz`
+ * (e.g. "-05:00") so a stale poll-time `today_in_tz` date never freezes the
+ * highlighted day on the calendar.
+ * @param {Date} now - render-time Date instance
+ * @param {Object|null|undefined} wx - parsed Open-Meteo payload
+ * @param {string|null|undefined} todayInTz - `cd.today_in_tz` from calendar payload
+ * @returns {Object} todayIso ("YYYY-MM-DD") and nowMin (0..1439)
+ */
+export function resolveNow(now, wx, todayInTz) {
+  var offsetSec = null;
+  if (wx && typeof wx.utc_offset_seconds === 'number' && !isNaN(wx.utc_offset_seconds)) {
+    offsetSec = wx.utc_offset_seconds;
+  } else if (todayInTz) {
+    var s = String(todayInTz).trim();
+    var m = /([+-])(\d{2}):?(\d{2})$/.exec(s);
+    if (m) offsetSec = (m[1] === '-' ? -1 : 1) * (+m[2] * 3600 + +m[3] * 60);
+    else if (/Z$/i.test(s)) offsetSec = 0;
+  }
+  var d = now instanceof Date && !isNaN(now.getTime()) ? now : new Date();
+  if (offsetSec !== null) {
+    var shifted = new Date(d.getTime() + offsetSec * 1000);
+    var y = shifted.getUTCFullYear();
+    var mo = String(shifted.getUTCMonth() + 1).padStart(2, '0');
+    var da = String(shifted.getUTCDate()).padStart(2, '0');
+    return {
+      todayIso: y + '-' + mo + '-' + da,
+      nowMin: shifted.getUTCHours() * 60 + shifted.getUTCMinutes()
+    };
+  }
+  var ly = d.getFullYear();
+  var lmo = String(d.getMonth() + 1).padStart(2, '0');
+  var lda = String(d.getDate()).padStart(2, '0');
+  return {
+    todayIso: ly + '-' + lmo + '-' + lda,
+    nowMin: d.getHours() * 60 + d.getMinutes()
+  };
+}

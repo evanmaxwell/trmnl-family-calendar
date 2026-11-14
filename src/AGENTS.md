@@ -19,7 +19,7 @@ Repo-wide conventions, the ADR index, and the Git workflow live in the root `AGE
 | `aqiShade.js` | `aqiShade` | `full.liquid`, `agenda.liquid` |
 | `timeFormat.js` | `fmt12`, `fmtRange12`, `hourLabel12`, `gridRange` | `full.liquid`, `month.liquid` |
 | `eventColors.js` | `STYLE_SLOTS`, `isEventUid`, `colorNameForHex`, `resolveCalendarName`, `compileCalendarStyles`, `styleForCalendar` | `full.liquid`, `agenda.liquid`, `month.liquid` |
-| `agenda.js` | `addDays`, `weekStart`, `fmtClock`, `agendaDays`, `compileDayNotes` | `agenda.liquid`, `month.liquid` |
+| `agenda.js` | `addDays`, `weekStart`, `fmtClock`, `agendaDays`, `compileDayNotes`, `resolveNow` | `agenda.liquid`, `month.liquid` |
 | `monthGrid.js` | `monthWeeks`, `weatherText` | `month.liquid` |
 | `middleware.js` | `cleanText`, `cacheKey`, `forecastUrl` | `src/middleware/calendar_weather_proxy.gs` |
 

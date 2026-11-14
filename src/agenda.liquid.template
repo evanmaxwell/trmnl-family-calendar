@@ -163,12 +163,9 @@ document.addEventListener("DOMContentLoaded", function() {
   var cd = calRaw.data || calRaw;
   var calFriendlyNames = cd.calendar_names || {};
   function resolveName(rawCn, bgColor) { return resolveCalendarName(rawCn, bgColor, calFriendlyNames); }
-  var nowIso = cd.today_in_tz || '';
-  var todayIso = nowIso.substring(0, 10);
-  var nowMin = nowIso.length > 16 ? +nowIso.substring(11, 13) * 60 + +nowIso.substring(14, 16) : 0;
-  if (!nowMin && wx && wx.current && wx.current.time && wx.current.time.length >= 16) {
-    nowMin = +wx.current.time.substring(11, 13) * 60 + +wx.current.time.substring(14, 16);
-  }
+  var nowInfo = resolveNow(new Date(), wx, cd.today_in_tz);
+  var todayIso = nowInfo.todayIso;
+  var nowMin = nowInfo.nowMin;
   var events = (cd.events || []).filter(function (ev) { return !isIgnoredEvent(ev); });
   // A fixed week, not a rolling one: the calendar source sends events from the
   // start of the week, and the today marker moves through the columns.

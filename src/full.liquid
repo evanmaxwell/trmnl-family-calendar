@@ -962,12 +962,11 @@ document.addEventListener("DOMContentLoaded", function() {
   }
 
   // === PARSE CALENDAR DATA ===
-  var eventsByDate = {}, todayStr = "", calFriendlyNames = {}, firstDayOfWeek = 1;
+  var eventsByDate = {}, calFriendlyNames = {}, firstDayOfWeek = 1;
   if (calRaw) {
     var cd = calData;
     var rawEvents = cd.events || [];
     calFriendlyNames = cd.calendar_names || {};
-    todayStr = (cd.today_in_tz || "").substring(0, 10);
     firstDayOfWeek = cd.first_day != null ? cd.first_day : 1; // 0=Sun, 1=Mon
 
     // Handle both flat array (production) and grouped object (trmnlp mock)
@@ -1037,12 +1036,36 @@ document.addEventListener("DOMContentLoaded", function() {
   try { var aqRaw = JSON.parse(sanitizeJson(`{{ IDX_2 | json | replace: '<', '\u003c' | replace: '`', '\u0060' | replace: '${', '\u0024{' }}`)); if(aqRaw && aqRaw.current) { var aqv = aqRaw.current.us_aqi != null ? aqRaw.current.us_aqi : aqRaw.current.european_aqi; if (aqv != null) aqi = Math.round(aqv); } } catch(e) {}
   if (aqi===null) { try { var aqRaw2 = parseLiquid(`{{ trmnl.plugin_settings.custom_fields_values.IDX_2 | replace: '<', '\u003c' | replace: '`', '\u0060' | replace: '${', '\u0024{' }}`); if(aqRaw2 && aqRaw2.current) { var aqv2 = aqRaw2.current.us_aqi != null ? aqRaw2.current.us_aqi : aqRaw2.current.european_aqi; if (aqv2 != null) aqi = Math.round(aqv2); } } catch(e) {} }
 
-  // If no weather dates, derive from calendar events
-  if (dates.length === 0 && todayStr) {
-    var d = new Date(todayStr);
+  // Determine current time and today's date in user's timezone.
+  // Both nowMin and todayIso are derived from the same render-time clock,
+  // using utc_offset_seconds from the weather API (falling back to the ISO
+  // offset in calData.today_in_tz when weather is absent) so all "now"
+  // indicators stay consistent and a stale poll-time date never freezes them.
+  var now = new Date();
+  var tzOffsetSec = (weatherRaw && typeof weatherRaw.utc_offset_seconds === 'number' && !isNaN(weatherRaw.utc_offset_seconds))
+    ? weatherRaw.utc_offset_seconds
+    : null;
+  if (tzOffsetSec === null && calData && calData.today_in_tz) {
+    var tzStr = String(calData.today_in_tz).trim();
+    var tzM = /([+-])(\d{2}):?(\d{2})$/.exec(tzStr);
+    if (tzM) tzOffsetSec = (tzM[1] === '-' ? -1 : 1) * (+tzM[2] * 3600 + +tzM[3] * 60);
+    else if (/Z$/i.test(tzStr)) tzOffsetSec = 0;
+  }
+  var localNow = tzOffsetSec !== null ? new Date(now.getTime() + tzOffsetSec * 1000) : now;
+  var nowMin = tzOffsetSec !== null
+    ? localNow.getUTCHours() * 60 + localNow.getUTCMinutes()
+    : localNow.getHours() * 60 + localNow.getMinutes();
+  var todayIso = tzOffsetSec !== null
+    ? localNow.getUTCFullYear() + "-" + String(localNow.getUTCMonth() + 1).padStart(2, "0") + "-" + String(localNow.getUTCDate()).padStart(2, "0")
+    : localNow.getFullYear() + "-" + String(localNow.getMonth() + 1).padStart(2, "0") + "-" + String(localNow.getDate()).padStart(2, "0");
+
+  // If no weather dates, derive from todayIso (UTC-safe date stepping)
+  if (dates.length === 0 && todayIso) {
+    var dp = todayIso.split('-');
+    var wd = new Date(Date.UTC(+dp[0], +dp[1] - 1, +dp[2]));
     for (var i = 0; i < 7; i++) {
-      dates.push(d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'));
-      d.setDate(d.getDate() + 1);
+      dates.push(wd.getUTCFullYear() + '-' + String(wd.getUTCMonth() + 1).padStart(2, '0') + '-' + String(wd.getUTCDate()).padStart(2, '0'));
+      wd.setUTCDate(wd.getUTCDate() + 1);
     }
   }
 
@@ -1136,18 +1159,6 @@ document.addEventListener("DOMContentLoaded", function() {
 
   var hasAD=false;
   for(var d in adByDate){if(adByDate[d].length>0){hasAD=true;break;}}
-
-  // Determine current time and today's date in user's timezone.
-  // Both nowMin and todayIso are derived from the same render-time clock,
-  // using utc_offset_seconds from the weather API for timezone correction.
-  // This ensures all "now" indicators (current half-hour band, render time
-  // pill, past-event dimming) are consistent with each other.
-  var now=new Date();
-  var localNow = (weatherRaw && weatherRaw.utc_offset_seconds != null)
-    ? new Date(now.getTime() + weatherRaw.utc_offset_seconds*1000 + now.getTimezoneOffset()*60000)
-    : now;
-  var nowMin = localNow.getHours()*60 + localNow.getMinutes();
-  var todayIso = localNow.getFullYear()+"-"+String(localNow.getMonth()+1).padStart(2,"0")+"-"+String(localNow.getDate()).padStart(2,"0");
 
   function isPast(dIso,em){return dIso<todayIso||(dIso===todayIso&&em<=nowMin);}
 

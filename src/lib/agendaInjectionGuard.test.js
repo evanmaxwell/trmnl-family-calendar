@@ -36,4 +36,12 @@ describe('agenda and month template injection guard', () => {
       expect(src.split('</' + 'script>').length - 1).toBe(1);
     });
   }
+
+  for (const file of ['src/agenda.liquid.template', 'src/month.liquid.template']) {
+    const src = read(file);
+    test(`${file} derives todayIso from resolveNow(new Date(), wx, cd.today_in_tz) rather than nowIso.substring(0, 10)`, () => {
+      expect(src).toContain('resolveNow(new Date(), wx, cd.today_in_tz)');
+      expect(src).not.toContain('nowIso.substring(0, 10)');
+    });
+  }
 });
